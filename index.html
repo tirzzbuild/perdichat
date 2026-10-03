@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perdi Chat</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Socket IO Client -->
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <!-- Tailwind Config untuk Warna WhatsApp -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        wa: {
+                            dark: '#0b141a',
+                            panel: '#111b21',
+                            lighter: '#202c33',
+                            green: '#00a884',
+                            lightgreen: '#005c4b',
+                            chatbg: '#efeae2',
+                            inputbg: '#2a3942',
+                            text: '#e9edef',
+                            subtext: '#8696a0'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0c1317; color: #e9edef; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; }
+        .chat-bg { background-color: #efeae2; background-image: url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png"); background-blend-mode: overlay; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex items-center justify-center">
+
+    <!-- CONTAINER UTAMA APLIKASI -->
+    <div id="app" class="w-full h-full md:w-[95%] md:h-[95%] max-w-[1600px] md:rounded-xl shadow-2xl flex overflow-hidden relative border border-gray-800">
+
+        <!-- ================= 1. HALAMAN LOGIN / OTP ================= -->
+        <div id="login-screen" class="absolute inset-0 bg-wa-dark z-50 flex flex-col items-center justify-center p-4">
+            <div class="bg-wa-panel p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-700/50 flex flex-col items-center text-center">
+                <div class="w-20 h-20 bg-wa-green/20 rounded-full flex items-center justify-center text-wa-green mb-4">
+                    <i data-lucide="message-circle-code" class="w-10 h-10"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-white mb-2">Selamat Datang di Perdi Chat</h1>
+                <p class="text-wa-subtext text-sm mb-6">Aplikasi komunikasi cepat, aman, dan tanpa batas.</p>
+
+                <!-- Step 1: Input Nomor -->
+                <div id="step-phone" class="w-full space-y-4">
+                    <div class="text-left">
+                        <label class="text-xs text-wa-subtext mb-1 block">Nomor WhatsApp / HP</label>
+                        <div class="flex items-center bg-wa-inputbg rounded-lg p-2 border border-transparent focus-within:border-wa-green">
+                            <span class="text-wa-subtext px-2 border-r border-gray-600 mr-2">+62</span>
+                            <input type="tel" id="input-phone" placeholder="81234567890" class="bg-transparent w-full focus:outline-none text-white text-sm">
+                        </div>
+                    </div>
+                    <button onclick="requestOtp()" id="btn-send-otp" class="w-full bg-wa-green hover:bg-emerald-600 text-wa-dark font-semibold py-2.5 rounded-lg transition duration-200 shadow">
+                        Kirim Kode OTP
+                    </button>
+                </div>
+
+                <!-- Step 2: Input OTP -->
+                <div id="step-otp" class="w-full space-y-4 hidden">
+                    <p class="text-xs text-wa-subtext">Kode OTP telah dikirim ke Channel Telegram.</p>
+                    <div class="text-left">
+                        <label class="text-xs text-wa-subtext mb-1 block">Kode OTP (4 Digit)</label>
+                        <input type="text" id="input-otp" maxlength="4" placeholder="••••" class="bg-wa-inputbg w-full p-2.5 rounded-lg text-center tracking-widest text-lg font-bold text-white focus:outline-none border border-transparent focus:border-wa-green">
+                    </div>
+                    <button onclick="verifyOtp()" class="w-full bg-wa-green hover:bg-emerald-600 text-wa-dark font-semibold py-2.5 rounded-lg transition duration-200 shadow">
+                        Verifikasi & Masuk
+                    </button>
+                    <button onclick="backToPhone()" class="text-xs text-wa-subtext hover:underline mt-2 block">Ganti Nomor HP</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 2. SIDEBAR UTAMA (KIRI) ================= -->
+        <div id="sidebar" class="w-full md:w-[380px] bg-wa-panel border-r border-gray-700/50 flex flex-col h-full z-10 flex-shrink-0">
+            <!-- Header Sidebar -->
+            <div class="h-16 bg-wa-lighter px-4 flex items-center justify-between border-b border-gray-700/50">
+                <div class="flex items-center space-x-3 cursor-pointer" onclick="openProfileModal()">
+                    <img id="my-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" class="w-10 h-10 rounded-full object-cover border border-wa-green" alt="Profil">
+                    <span id="my-name" class="font-semibold text-white text-sm truncate max-w-[130px]">Pengguna</span>
+                </div>
+                <div class="flex items-center space-x-1 text-wa-subtext">
+                    <button onclick="openStatusModal()" class="p-2 hover:bg-wa-inputbg rounded-full relative" title="Status / Story">
+                        <i data-lucide="circle-dashed" class="w-5 h-5"></i>
+                        <span id="story-dot" class="absolute top-1.5 right-1.5 w-2 h-2 bg-wa-green rounded-full hidden"></span>
+                    </button>
+                    <button onclick="openAddContactModal()" class="p-2 hover:bg-wa-inputbg rounded-full" title="Tambah Kontak">
+                        <i data-lucide="user-plus" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="openProfileModal()" class="p-2 hover:bg-wa-inputbg rounded-full" title="Pengaturan Profil">
+                        <i data-lucide="settings" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Kolom Pencarian -->
+            <div class="p-2 bg-wa-panel border-b border-gray-700/30 flex items-center space-x-2">
+                <div class="flex-1 bg-wa-inputbg rounded-lg flex items-center px-3 py-1.5 space-x-2">
+                    <i data-lucide="search" class="w-4 h-4 text-wa-subtext"></i>
+                    <input type="text" id="search-contact" oninput="filterContacts(this.value)" placeholder="Cari atau mulai chat baru" class="bg-transparent w-full text-xs text-white focus:outline-none">
+                </div>
+            </div>
+
+            <!-- Daftar Chat & Kontak -->
+            <div id="contact-list" class="flex-1 overflow-y-auto divide-y divide-gray-800/40">
+                <!-- Data kontak dirender via JS -->
+            </div>
+            
+            <!-- Empty State Sidebar -->
+            <div id="empty-sidebar" class="hidden flex-1 flex flex-col items-center justify-center text-center p-4 text-wa-subtext">
+                <i data-lucide="users" class="w-10 h-10 mb-2 opacity-50"></i>
+                <p class="text-xs">Belum ada kontak.<br>Klik tombol + untuk menambah.</p>
+            </div>
+        </div>
+
+        <!-- ================= 3. AREA CHAT / KANAN ================= -->
+        <div id="chat-area" class="flex-1 flex flex-col h-full bg-wa-dark relative">
+            <!-- Tampilan Kosong -->
+            <div id="empty-chat" class="flex-1 flex flex-col items-center justify-center text-center p-8 bg-wa-dark text-wa-subtext">
+                <div class="w-24 h-24 bg-wa-lighter rounded-full flex items-center justify-center mb-4 text-wa-green shadow-inner">
+                    <i data-lucide="message-square" class="w-12 h-12"></i>
+                </div>
+                <h2 class="text-xl font-bold text-white mb-1">Perdi Chat Web</h2>
+                <p class="text-xs max-w-sm mb-4">Kirim dan terima pesan secara instan, buat status, lakukan panggilan suara/video, dan terhubung dengan kontak kapan saja.</p>
+                <button onclick="openAddContactModal()" class="bg-wa-green text-wa-dark px-4 py-2 rounded-full font-semibold text-xs hover:bg-emerald-600 shadow">Tambah Kontak Baru</button>
+            </div>
+
+            <!-- Tampilan Ruang Chat Aktif -->
+            <div id="active-chat" class="flex-1 flex flex-col h-full hidden">
+                <!-- Header Chat -->
+                <div class="h-16 bg-wa-lighter px-4 flex items-center justify-between border-b border-gray-700/50">
+                    <div class="flex items-center space-x-3">
+                        <button onclick="closeActiveChat()" class="md:hidden text-wa-subtext mr-1">
+                            <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                        </button>
+                        <img id="active-avatar" src="" class="w-10 h-10 rounded-full object-cover" alt="Avatar">
+                        <div>
+                            <h3 id="active-name" class="font-semibold text-white text-sm">Nama Kontak</h3>
+                            <p id="active-status" class="text-xs text-wa-subtext">online</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 text-wa-subtext">
+                        <button onclick="startCall('video')" class="p-2.5 hover:bg-wa-inputbg rounded-full transition" title="Video Call">
+                            <i data-lucide="video" class="w-5 h-5"></i>
+                        </button>
+                        <button onclick="startCall('audio')" class="p-2.5 hover:bg-wa-inputbg rounded-full transition" title="Panggilan Suara">
+                            <i data-lucide="phone" class="w-5 h-5"></i>
+                        </button>
+                        <div class="h-5 w-[1px] bg-gray-700 mx-1"></div>
+                        <button onclick="clearChatHistory()" class="p-2.5 hover:bg-wa-inputbg rounded-full transition text-red-400" title="Bersihkan Chat">
+                            <i data-lucide="trash-2" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Isi Percakapan -->
+                <div id="message-container" class="flex-1 chat-bg p-4 overflow-y-auto space-y-2 flex flex-col">
+                    <!-- Pesan masuk di sini -->
+                </div>
+
+                <!-- Footer Input Pesan -->
+                <div class="bg-wa-lighter px-4 py-3 flex items-center space-x-3 border-t border-gray-700/50">
+                    <button class="text-wa-subtext hover:text-white">
+                        <i data-lucide="paperclip" class="w-5 h-5"></i>
+                    </button>
+                    <input type="text" id="message-input" onkeypress="handleKeyPress(event)" placeholder="Ketik pesan..." class="flex-1 bg-wa-inputbg text-white px-4 py-2.5 rounded-lg text-sm focus:outline-none">
+                    <button onclick="sendMessage()" class="bg-wa-green text-wa-dark p-2.5 rounded-full hover:bg-emerald-600 transition shadow">
+                        <i data-lucide="send" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ================= 4. MODAL TAMBAH KONTAK ================= -->
+    <div id="modal-contact" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-wa-panel p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <i data-lucide="user-plus" class="w-5 h-5 text-wa-green"></i> Tambah Kontak Baru
+            </h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs text-wa-subtext mb-1 block">Nama Lengkap</label>
+                    <input type="text" id="new-contact-name" placeholder="Contoh: Budi Santoso" class="w-full bg-wa-inputbg text-white p-2 rounded-lg text-sm focus:outline-none border border-transparent focus:border-wa-green">
+                </div>
+                <div>
+                    <label class="text-xs text-wa-subtext mb-1 block">Nomor HP / WA</label>
+                    <input type="text" id="new-contact-phone" placeholder="Contoh: 08198765432" class="w-full bg-wa-inputbg text-white p-2 rounded-lg text-sm focus:outline-none border border-transparent focus:border-wa-green">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 mt-6">
+                <button onclick="closeAddContactModal()" class="px-4 py-2 rounded-lg text-xs text-wa-subtext hover:bg-wa-inputbg transition">Batal</button>
+                <button onclick="saveNewContact()" class="px-4 py-2 rounded-lg text-xs bg-wa-green text-wa-dark font-semibold hover:bg-emerald-600 transition">Simpan Kontak</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 5. MODAL PROFIL PENGGUNA ================= -->
+    <div id="modal-profile" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-wa-panel p-6 rounded-xl w-full max-w-sm border border-gray-700 shadow-2xl text-center">
+            <h3 class="text-lg font-bold text-white mb-4">Profil Saya</h3>
+            <div class="relative w-24 h-24 mx-auto mb-4 group cursor-pointer" onclick="document.getElementById('file-avatar').click()">
+                <img id="profile-avatar-preview" src="" class="w-24 h-24 rounded-full object-cover border-2 border-wa-green">
+                <div class="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-xs">Ubah Foto</div>
+            </div>
+            <input type="file" id="file-avatar" accept="image/*" class="hidden" onchange="previewAvatar(event)">
+            
+            <div class="space-y-3 text-left">
+                <div>
+                    <label class="text-xs text-wa-subtext mb-1 block">Nama Tampilan</label>
+                    <input type="text" id="edit-my-name" class="w-full bg-wa-inputbg text-white p-2 rounded-lg text-sm focus:outline-none border border-transparent focus:border-wa-green">
+                </div>
+                <div>
+                    <label class="text-xs text-wa-subtext mb-1 block">Bio / Info</label>
+                    <input type="text" id="edit-my-bio" class="w-full bg-wa-inputbg text-white p-2 rounded-lg text-sm focus:outline-none border border-transparent focus:border-wa-green" value="Sedang menggunakan Perdi Chat">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 mt-6">
+                <button onclick="closeProfileModal()" class="px-4 py-2 rounded-lg text-xs text-wa-subtext hover:bg-wa-inputbg transition">Batal</button>
+                <button onclick="saveProfile()" class="px-4 py-2 rounded-lg text-xs bg-wa-green text-wa-dark font-semibold hover:bg-emerald-600 transition">Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 6. MODAL STATUS / STORY ================= -->
+    <div id="modal-status" class="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-wa-panel rounded-xl w-full max-w-md border border-gray-700 shadow-2xl overflow-hidden flex flex-col h-[500px]">
+            <div class="p-4 bg-wa-lighter flex items-center justify-between border-b border-gray-700">
+                <h3 class="font-bold text-white text-sm flex items-center gap-2"><i data-lucide="circle-dashed" class="w-4 h-4 text-wa-green"></i> Status Cerita</h3>
+                <button onclick="closeStatusModal()" class="text-wa-subtext hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="flex-1 p-4 overflow-y-auto space-y-4">
+                <div class="bg-wa-inputbg p-3 rounded-lg flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-full bg-wa-green/20 flex items-center justify-center text-wa-green cursor-pointer" onclick="document.getElementById('story-file').click()">
+                        <i data-lucide="plus" class="w-6 h-6"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h4 class="text-white text-sm font-semibold">Buat Status Baru</h4>
+                        <p class="text-xs text-wa-subtext">Bagikan momen foto/teks ke teman</p>
+                        <input type="file" id="story-file" accept="image/*" class="hidden" onchange="uploadStory(event)">
+                    </div>
+                </div>
+                <div id="status-list-container" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 7. MODAL PANGGILAN ================= -->
+    <div id="modal-call" class="fixed inset-0 bg-wa-dark/95 z-50 flex flex-col items-center justify-between p-8 hidden">
+        <div class="text-center mt-6">
+            <h3 id="call-title" class="text-xl font-bold text-white mb-1">Memanggil...</h3>
+            <p id="call-name" class="text-lg text-wa-green font-medium">Nama Kontak</p>
+        </div>
+        <div class="relative w-40 h-40 md:w-56 md:h-56 rounded-full overflow-hidden border-4 border-wa-green shadow-2xl flex items-center justify-center bg-wa-lighter">
+            <img id="call-avatar" src="" class="w-full h-full object-cover">
+            <div id="video-overlay" class="absolute inset-0 bg-black/30 hidden flex items-center justify-center">
+                <span class="text-xs bg-black/60 px-2 py-1 rounded text-white">Live Video Connected</span>
+            </div>
+        </div>
+        <div class="flex items-center space-x-6 mb-6">
+            <button onclick="endCall()" class="w-14 h-14 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center shadow-lg transition transform hover:scale-105" title="Matikan Panggilan">
+                <i data-lucide="phone-off" class="w-6 h-6"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- SCRIPT JAVASCRIPT UTAMA -->
+    <script>
+        // Menggunakan asal domain otomatis agar aman di Pterodactyl dan APK
+        const SERVER_URL = window.location.origin + "/"; 
+        
+        lucide.createIcons();
+
+        let currentUser = JSON.parse(localStorage.getItem('perdi_user')) || null;
+        let activeContactId = null;
+        let currentPhone = '';
+        let socket;
+        
+        const chatChannel = new BroadcastChannel('perdi_chat_sync');
+
+        let contacts = JSON.parse(localStorage.getItem('perdi_contacts')) || [];
+        let messages = JSON.parse(localStorage.getItem('perdi_messages')) || {};
+        let stories = JSON.parse(localStorage.getItem('perdi_stories')) || [];
+
+        window.onload = function() {
+            if (currentUser) {
+                document.getElementById('login-screen').classList.add('hidden');
+                initApp();
+                connectSocket();
+            }
+        };
+
+        async function requestOtp() {
+            const phone = document.getElementById('input-phone').value.trim();
+            if (!phone || phone.length < 9) {
+                alert('Masukkan nomor HP yang valid!');
+                return;
+            }
+            currentPhone = phone;
+
+            try {
+                const btn = document.getElementById('btn-send-otp');
+                const originalText = btn.innerText;
+                btn.innerText = 'Mengirim...';
+                btn.disabled = true;
+
+                const response = await fetch(`${SERVER_URL}api/request-otp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: phone })
+                });
+
+                const data = await response.json();
+                btn.innerText = originalText;
+                btn.disabled = false;
+
+                if (data.success) {
+                    alert(`✅ OTP telah dikirim ke Channel Telegram!\n\nNomor: ${data.phone}\n\nSilakan cek Channel Telegram untuk mendapatkan kode OTP.`);
+                    if (data.otp) {
+                        console.log('Development OTP:', data.otp);
+                    }
+                    document.getElementById('step-phone').classList.add('hidden');
+                    document.getElementById('step-otp').classList.remove('hidden');
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            } catch (error) {
+                alert('❌ Terjadi kesalahan koneksi.');
+                console.error('Error:', error);
+            }
+        }
+
+        async function verifyOtp() {
+            const otp = document.getElementById('input-otp').value.trim();
+            if (!otp || otp.length !== 4) {
+                alert('Masukkan kode OTP 4 digit!');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${SERVER_URL}api/verify-otp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: currentPhone, otp: otp })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentUser = {
+                        name: 'Pengguna ' + currentPhone.slice(-4),
+                        phone: currentPhone,
+                        bio: 'Tersedia di Perdi Chat',
+                        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+                    };
+                    localStorage.setItem('perdi_user', JSON.stringify(currentUser));
+                    document.getElementById('login-screen').classList.add('hidden');
+                    initApp();
+                    connectSocket();
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            } catch (error) {
+                alert('❌ Terjadi kesalahan verifikasi.');
+                console.error('Error:', error);
+            }
+        }
+
+        function backToPhone() {
+            document.getElementById('step-otp').classList.add('hidden');
+            document.getElementById('step-phone').classList.remove('hidden');
+            currentPhone = '';
+        }
+
+        function initApp() {
+            document.getElementById('my-name').innerText = currentUser.name;
+            document.getElementById('my-avatar').src = currentUser.avatar;
+            renderContacts();
+        }
+
+        function connectSocket() {
+            socket = io(SERVER_URL);
+            
+            socket.on('connect', () => {
+                if(currentUser) socket.emit('join-room', currentUser.phone);
+            });
+
+            socket.on('receive-message', (data) => {
+                if (activeContactId === data.from) {
+                    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const msgObj = { sender: 'them', text: data.message, time };
+                    if (!messages[activeContactId]) messages[activeContactId] = [];
+                    messages[activeContactId].push(msgObj);
+                    localStorage.setItem('perdi_messages', JSON.stringify(messages));
+                    renderMessages();
+                } else {
+                    let c = contacts.find(x => x.id === data.from);
+                    if (c) {
+                        c.unread = (c.unread || 0) + 1;
+                        renderContacts();
+                    }
+                }
+            });
+        }
+
+        chatChannel.onmessage = function(event) {
+            const data = event.data;
+            if (data.type === 'message') {
+                if (!messages[data.chatId]) messages[data.chatId] = [];
+                messages[data.chatId].push(data.msg);
+                localStorage.setItem('perdi_messages', JSON.stringify(messages));
+                
+                if (activeContactId === data.chatId) {
+                    renderMessages();
+                } else {
+                    let c = contacts.find(x => x.id === data.chatId);
+                    if (c) {
+                        c.unread = (c.unread || 0) + 1;
+                        renderContacts();
+                    }
+                }
+            }
+        };
+
+        function renderContacts(filter = '') {
+            const listEl = document.getElementById('contact-list');
+            const emptyState = document.getElementById('empty-sidebar');
+            listEl.innerHTML = '';
+
+            const filtered = contacts.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()));
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            filtered.forEach(contact => {
+                const lastMsgArr = messages[contact.id] || [];
+                const lastMsg = lastMsgArr.length > 0 ? lastMsgArr[lastMsgArr.length - 1].text : contact.bio;
+
+                const div = document.createElement('div');
+                div.className = `flex items-center px-4 py-3 cursor-pointer hover:bg-wa-lighter transition ${activeContactId === contact.id ? 'bg-wa-lighter' : ''}`;
+                div.onclick = () => selectContact(contact.id);
+                div.innerHTML = `
+                    <div class="relative mr-3 flex-shrink-0">
+                        <img src="${contact.avatar}" class="w-12 h-12 rounded-full object-cover">
+                    </div>
+                    <div class="flex-1 min-w-0 border-b border-gray-800/50 pb-2">
+                        <div class="flex justify-between items-baseline mb-1">
+                            <h4 class="text-white font-medium text-sm truncate">${contact.name}</h4>
+                            <span class="text-[10px] text-wa-subtext">${lastMsgArr.length > 0 ? lastMsgArr[lastMsgArr.length - 1].time : ''}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <p class="text-xs text-wa-subtext truncate pr-2">${lastMsg}</p>
+                            ${contact.unread ? `<span class="bg-wa-green text-wa-dark text-[10px] font-bold px-1.5 py-0.5 rounded-full">${contact.unread}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+                listEl.appendChild(div);
+            });
+        }
+
+        function filterContacts(val) {
+            renderContacts(val);
+        }
+
+        function selectContact(id) {
+            activeContactId = id;
+            const contact = contacts.find(c => c.id === id);
+            contact.unread = 0;
+
+            document.getElementById('empty-chat').classList.add('hidden');
+            document.getElementById('active-chat').classList.remove('hidden');
+
+            document.getElementById('active-name').innerText = contact.name;
+            document.getElementById('active-avatar').src = contact.avatar;
+            document.getElementById('active-status').innerText = contact.bio || 'online';
+
+            renderMessages();
+            renderContacts();
+        }
+
+        function closeActiveChat() {
+            activeContactId = null;
+            document.getElementById('active-chat').classList.add('hidden');
+            document.getElementById('empty-chat').classList.remove('hidden');
+        }
+
+        function renderMessages() {
+            const container = document.getElementById('message-container');
+            container.innerHTML = '';
+
+            const chatMsgs = messages[activeContactId] || [];
+            chatMsgs.forEach(m => {
+                const isMe = m.sender === 'me';
+                const div = document.createElement('div');
+                div.className = `flex flex-col max-w-[70%] ${isMe ? 'ml-auto items-end' : 'mr-auto items-start'} mb-1`;
+                div.innerHTML = `
+                    <div class="p-2.5 rounded-lg text-sm shadow relative ${isMe ? 'bg-wa-lightgreen text-white rounded-tr-none' : 'bg-wa-inputbg text-white rounded-tl-none'}">
+                        <p class="break-words pr-12">${m.text}</p>
+                        <span class="absolute bottom-1 right-2 text-[9px] text-wa-subtext">${m.time}</span>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if (!text || !activeContactId) return;
+
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const msgObj = { sender: 'me', text, time };
+
+            if (!messages[activeContactId]) messages[activeContactId] = [];
+            messages[activeContactId].push(msgObj);
+            localStorage.setItem('perdi_messages', JSON.stringify(messages));
+
+            if(socket) {
+                socket.emit('send-message', {
+                    to: activeContactId,
+                    message: text
+                });
+            }
+
+            chatChannel.postMessage({ type: 'message', chatId: activeContactId, msg: { sender: 'them', text, time } });
+
+            input.value = '';
+            renderMessages();
+            renderContacts();
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        function clearChatHistory() {
+            if (confirm('Hapus seluruh riwayat chat ini?')) {
+                messages[activeContactId] = [];
+                localStorage.setItem('perdi_messages', JSON.stringify(messages));
+                renderMessages();
+                renderContacts();
+            }
+        }
+
+        function openAddContactModal() {
+            document.getElementById('modal-contact').classList.remove('hidden');
+        }
+        function closeAddContactModal() {
+            document.getElementById('modal-contact').classList.add('hidden');
+        }
+        function saveNewContact() {
+            const name = document.getElementById('new-contact-name').value.trim();
+            const phone = document.getElementById('new-contact-phone').value.trim();
+            if (!name || !phone) {
+                alert('Nama dan Nomor HP harus diisi!');
+                return;
+            }
+
+            const newContact = {
+                id: 'c_' + Date.now(),
+                name,
+                phone,
+                avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${name}`,
+                bio: 'Halo, saya menggunakan Perdi Chat',
+                unread: 0
+            };
+
+            contacts.push(newContact);
+            localStorage.setItem('perdi_contacts', JSON.stringify(contacts));
+            closeAddContactModal();
+            renderContacts();
+            document.getElementById('new-contact-name').value = '';
+            document.getElementById('new-contact-phone').value = '';
+        }
+
+        function openProfileModal() {
+            document.getElementById('edit-my-name').value = currentUser.name;
+            document.getElementById('edit-my-bio').value = currentUser.bio || '';
+            document.getElementById('profile-avatar-preview').src = currentUser.avatar;
+            document.getElementById('modal-profile').classList.remove('hidden');
+        }
+        function closeProfileModal() {
+            document.getElementById('modal-profile').classList.add('hidden');
+        }
+        function previewAvatar(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    document.getElementById('profile-avatar-preview').src = evt.target.result;
+                    currentUser.avatar = evt.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        function saveProfile() {
+            currentUser.name = document.getElementById('edit-my-name').value.trim();
+            currentUser.bio = document.getElementById('edit-my-bio').value.trim();
+            localStorage.setItem('perdi_user', JSON.stringify(currentUser));
+            document.getElementById('my-name').innerText = currentUser.name;
+            document.getElementById('my-avatar').src = currentUser.avatar;
+            closeProfileModal();
+        }
+
+        function openStatusModal() {
+            document.getElementById('modal-status').classList.remove('hidden');
+            renderStories();
+        }
+        function closeStatusModal() {
+            document.getElementById('modal-status').classList.add('hidden');
+        }
+        function uploadStory(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    stories.push({
+                        user: currentUser.name,
+                        image: evt.target.result,
+                        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    });
+                    localStorage.setItem('perdi_stories', JSON.stringify(stories));
+                    renderStories();
+                    document.getElementById('story-dot').classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        function renderStories() {
+            const container = document.getElementById('status-list-container');
+            container.innerHTML = '';
+            if (stories.length === 0) {
+                container.innerHTML = '<p class="text-xs text-wa-subtext text-center py-4">Belum ada status terbaru.</p>';
+                return;
+            }
+            stories.forEach((s) => {
+                const div = document.createElement('div');
+                div.className = 'bg-wa-inputbg p-3 rounded-lg flex items-center justify-between';
+                div.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <img src="${s.image}" class="w-12 h-12 rounded-lg object-cover border border-wa-green">
+                        <div>
+                            <h4 class="text-white text-sm font-semibold">${s.user}</h4>
+                            <span class="text-[10px] text-wa-subtext">Hari ini pukul ${s.time}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function startCall(type) {
+            if (!activeContactId) return;
+            const contact = contacts.find(c => c.id === activeContactId);
+            
+            document.getElementById('call-title').innerText = type === 'video' ? 'Panggilan Video...' : 'Panggilan Suara...';
+            document.getElementById('call-name').innerText = contact.name;
+            document.getElementById('call-avatar').src = contact.avatar;
+            
+            const videoOverlay = document.getElementById('video-overlay');
+            if (type === 'video') {
+                videoOverlay.classList.remove('hidden');
+            } else {
+                videoOverlay.classList.add('hidden');
+            }
+
+            document.getElementById('modal-call').classList.remove('hidden');
+        }
+
+        function endCall() {
+            document.getElementById('modal-call').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
